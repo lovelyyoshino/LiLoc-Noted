@@ -89,7 +89,7 @@ roslaunch block_localization run_lio_sam_mid360.launch
 ```
 
 ### 4. Our Factory dataset
-Download the Factory dataset from [BaiDu Pan (passcode: g4a8)](链接: https://pan.baidu.com/s/1AuivykDu-2djHE7Z6Sqg5Q?pwd=g4a8)
+Download the Factory dataset from [BaiDu Pan (passcode: g4a8)](https://pan.baidu.com/s/1AuivykDu-2djHE7Z6Sqg5Q?pwd=g4a8)
 ```bash
 roslaunch block_localization run_lio_sam_default.launch
 ```
