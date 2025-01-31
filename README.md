@@ -89,7 +89,7 @@ roslaunch block_localization run_lio_sam_mid360.launch
 ```
 
 ### 4. Our Factory dataset
-Download the Factory dataset from [Google Driver](https://drive.google.com/drive/folders/13e476AmgzPgjNNQ71qwy_0sErJg4607J?usp=sharing)
+Download the Factory dataset from [BaiDu Pan (passcode: g4a8)](链接: https://pan.baidu.com/s/1AuivykDu-2djHE7Z6Sqg5Q?pwd=g4a8)
 ```bash
 roslaunch block_localization run_lio_sam_default.launch
 ```
