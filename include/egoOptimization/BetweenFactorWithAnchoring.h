@@ -11,14 +11,14 @@
 namespace gtsam {
 
   /**
-   * A class for a measurement predicted by "between(config[key1], config[key2])"
-   * @tparam VALUE the Value type
+   * 一个由 "between(config[key1], config[key2])" 预测的测量类
+   * @tparam VALUE 值类型
    * @addtogroup SLAM
    */
   template<class VALUE>
   class BetweenFactorWithAnchoring: public NoiseModelFactor4<VALUE, VALUE, VALUE, VALUE> {
 
-    // Check that VALUE type is a testable Lie group
+    // 检查VALUE类型是否是可测试的李群
     BOOST_CONCEPT_ASSERT((IsTestable<VALUE>));
     BOOST_CONCEPT_ASSERT((IsLieGroup<VALUE>));
 
@@ -28,22 +28,22 @@ namespace gtsam {
 
   private:
 
-    typedef BetweenFactorWithAnchoring<VALUE> This;
-    typedef NoiseModelFactor4<VALUE, VALUE, VALUE, VALUE> Base;
+    typedef BetweenFactorWithAnchoring<VALUE> This; // 当前类的别名
+    typedef NoiseModelFactor4<VALUE, VALUE, VALUE, VALUE> Base; // 基类的别名
 
-    VALUE measured_; /** The measurement */
+    VALUE measured_; /** 测量值 */
 
   public:
 
-    // shorthand for a smart pointer to a factor
+    // 智能指针的简写
     typedef typename boost::shared_ptr<BetweenFactorWithAnchoring> shared_ptr;
 
-    /** default constructor - only use for serialization */
+    /** 默认构造函数 - 仅用于序列化 */
     BetweenFactorWithAnchoring() {}
 
-    /** Constructor */
+    /** 构造函数 */
     BetweenFactorWithAnchoring(
-          // 1 for robot 1, and 2 for robot 2
+          // 机器人1和机器人2的键
           Key key1, Key key2, Key anchor_key1, Key anchor_key2,
           const VALUE& measured,
           const SharedNoiseModel& model = nullptr) :
@@ -52,14 +52,15 @@ namespace gtsam {
 
     virtual ~BetweenFactorWithAnchoring() {}
 
-    /// @return a deep copy of this factor
+    /// @return 此因子的深拷贝
     virtual gtsam::NonlinearFactor::shared_ptr clone() const {
       return boost::static_pointer_cast<gtsam::NonlinearFactor>(
-          gtsam::NonlinearFactor::shared_ptr(new This(*this))); }
+          gtsam::NonlinearFactor::shared_ptr(new This(*this))); 
+    }
 
-    /** implement functions needed for Testable */
+    /** 实现 Testable 所需的函数 */
 
-    /** print */
+    /** 打印 */
     virtual void print(const std::string& s, const KeyFormatter& keyFormatter = DefaultKeyFormatter) const {
       std::cout << s << "BetweenFactorWithAnchoring("
           << keyFormatter(this->key1()) << ","
@@ -68,21 +69,15 @@ namespace gtsam {
       this->noiseModel_->print("  noise model: ");
     }
 
-    /** equals */
+    /** 等于比较 */
     virtual bool equals(const NonlinearFactor& expected, double tol=1e-9) const {
       const This *e =  dynamic_cast<const This*> (&expected);
       return e != nullptr && Base::equals(*e, tol) && traits<T>::Equals(this->measured_, e->measured_, tol);
     }
 
-    /** implement functions needed to derive from Factor */
+    /** 实现 Factor 所需的函数 */
 
-    // some useful link, giseop 
-    // line 384, https://gtsam.org/doxygen/a00317_source.html
-    // https://gtsam.org/doxygen/a02091.html
-    // betweenfactor https://gtsam.org/doxygen/a00935_source.html
-    // line 224 https://gtsam.org/doxygen/a00053_source.html
-    // isam ver. line 233, https://people.csail.mit.edu/kaess/isam/doc/slam2d_8h_source.html
-    /** vector of errors */
+    /** 计算误差向量 */
     Vector evaluateError(
         const T& p1, const T& p2, const T& anchor_p1, const T& anchor_p2,
         boost::optional<Matrix&> H1 = boost::none,
@@ -91,27 +86,27 @@ namespace gtsam {
         boost::optional<Matrix&> anchor_H2 = boost::none
       ) const {
 
-      // anchor node h(.) (ref: isam ver. line 233, https://people.csail.mit.edu/kaess/isam/doc/slam2d_8h_source.html)
-      T hx1 = traits<T>::Compose(anchor_p1, p1, anchor_H1, H1); // for the updated jacobian, see line 60, 219, https://gtsam.org/doxygen/a00053_source.html
+      // 锚节点 h(.) (参考: isam ver. line 233)
+      T hx1 = traits<T>::Compose(anchor_p1, p1, anchor_H1, H1); // 更新雅可比，见相关文档
       T hx2 = traits<T>::Compose(anchor_p2, p2, anchor_H2, H2); 
       T hx = traits<T>::Between(hx1, hx2, H1, H2); 
 
-      return traits<T>::Local(measured_, hx);
+      return traits<T>::Local(measured_, hx); // 返回局部误差
     }
 
-    /** return the measured */
+    /** 返回测量值 */
     const VALUE& measured() const {
       return measured_;
     }
 
-    /** number of variables attached to this factor */
+    /** 附加到此因子的变量数量 */
     std::size_t size() const {
-      return 4;
+      return 4; // 因子涉及四个变量
     }
 
   private:
 
-    /** Serialization function */
+    /** 序列化函数 */
     friend class boost::serialization::access;
     template<class ARCHIVE>
     void serialize(ARCHIVE & ar, const unsigned int /*version*/) {
@@ -120,7 +115,7 @@ namespace gtsam {
       ar & BOOST_SERIALIZATION_NVP(measured_);
     }
 
-	//   // Alignment, see https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
+	//   // 对齐，参见 https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
 	//   enum { NeedsToAlign = (sizeof(VALUE) % 16) == 0 };
   //   public:
   //     EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
@@ -132,8 +127,8 @@ namespace gtsam {
   struct traits<BetweenFactorWithAnchoring<VALUE> > : public Testable<BetweenFactorWithAnchoring<VALUE> > {};
 
   // /**
-  //  * Binary between constraint - forces between to a given value
-  //  * This constraint requires the underlying type to a Lie type
+  //  * 二元之间约束 - 强制两个值之间为给定值
+  //  * 此约束要求底层类型为李类型
   //  *
   //  */
   // template<class VALUE>
@@ -141,7 +136,7 @@ namespace gtsam {
   // public:
   //   typedef boost::shared_ptr<BetweenConstraintGiseop<VALUE> > shared_ptr;
 
-  //   /** Syntactic sugar for constrained version */
+  //   /** 有限版本的语法糖 */
   //   BetweenConstraintGiseop(const VALUE& measured, Key key1, Key key2, double mu = 1000.0) :
   //     BetweenFactorWithAnchoring<VALUE>(key1, key2, measured,
   //                          noiseModel::Constrained::All(traits<VALUE>::GetDimension(measured), std::abs(mu)))
@@ -149,7 +144,7 @@ namespace gtsam {
 
   // private:
 
-  //   /** Serialization function */
+  //   /** 序列化函数 */
   //   friend class boost::serialization::access;
   //   template<class ARCHIVE>
   //   void serialize(ARCHIVE & ar, const unsigned int /*version*/) {
