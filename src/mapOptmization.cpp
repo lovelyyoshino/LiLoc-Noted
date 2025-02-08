@@ -1293,37 +1293,36 @@ void transformUpdate() {
 
     incrementalOdometryAffineBack = trans2Affine3f(transformTobeMapped); // 转换成仿射矩阵
 }
-
 // 对更新后的值施加约束
 float constraintTransformation(float value, float limit) {
     if (value < -limit)
-        value = -limit;
+        value = -limit; // 如果值小于负限制，则设置为负限制
     if (value > limit)
-        value = limit; // 相干维护范围限制
+        value = limit; // 相干维护范围限制，若值超过正限制，则设置为正限制
 
-    return value; // 最后的约束值
+    return value; // 返回最后的约束值
 }
 
 // 保存帧信息
 bool saveFrame() {
-    if (cloudKeyPoses3D->points.empty()) // 确认有效点集
-        return true;
+    if (cloudKeyPoses3D->points.empty()) // 确认有效点集是否为空
+        return true; // 若有效点集为空，则无需保存帧信息
 
-    Eigen::Affine3f transStart = pclPointToAffine3f(cloudKeyPoses6D->back());
+    Eigen::Affine3f transStart = pclPointToAffine3f(cloudKeyPoses6D->back()); // 获取当前帧的起始变换矩阵
     Eigen::Affine3f transFinal = pcl::getTransformation(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
-                                                        transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
+                                                        transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]); // 获取目标帧的最终变换矩阵
     
-    Eigen::Affine3f transBetween = transStart.inverse() * transFinal; // 得到两个坐标变换之间的关系
+    Eigen::Affine3f transBetween = transStart.inverse() * transFinal; // 计算两个坐标变换之间的关系
 
     float x, y, z, roll, pitch, yaw; // 位姿各向量初始化
-    pcl::getTranslationAndEulerAngles(transBetween, x, y, z, roll, pitch, yaw); // 转回到欧拉角表达形式
+    pcl::getTranslationAndEulerAngles(transBetween, x, y, z, roll, pitch, yaw); // 从变换中提取平移和欧拉角信息
 
-    // 验证跟进（添加）阈值
+    // 验证跟进（添加）阈值，以决定是否生成新的关键帧
     if (abs(roll)  < surroundingkeyframeAddingAngleThreshold &&
         abs(pitch) < surroundingkeyframeAddingAngleThreshold && 
         abs(yaw)   < surroundingkeyframeAddingAngleThreshold &&
         sqrt(x * x + y * y + z * z) < surroundingkeyframeAddingDistThreshold)
-        return false; // 返回false，不产生其他关键帧
+        return false; // 如果旋转和位移均在阈值范围内，则不产生新的关键帧
 
     return true; // 可以形成新的帧
 }
@@ -1331,72 +1330,72 @@ bool saveFrame() {
 // 添加里程计因子
 void addOdomFactor() {
     if (cloudKeyPoses3D->points.empty()) { 
-        noiseModel::Diagonal::shared_ptr priorNoise = noiseModel::Diagonal::Variances((Vector(6) << 1e-2, 1e-2, M_PI * M_PI, 1e8, 1e8, 1e8).finished()); // 参数设定
+        noiseModel::Diagonal::shared_ptr priorNoise = noiseModel::Diagonal::Variances((Vector(6) << 1e-2, 1e-2, M_PI * M_PI, 1e8, 1e8, 1e8).finished()); // 创建先验噪声模型
         gtSAMgraph.add(PriorFactor<Pose3>(0, trans2gtsamPose(transformTobeMapped), priorNoise)); // 为 GTSAM 图添加初始先验
-        initialEstimate.insert(0, trans2gtsamPose(transformTobeMapped)); // 初始化插入
+        initialEstimate.insert(0, trans2gtsamPose(transformTobeMapped)); // 插入初始估计
 
         writeVertex(0, trans2gtsamPose(transformTobeMapped), vertices_str); // 写入顶点文件型式
     }
-    else { // 对于普通的增量因子
+    else { // 处理普通的增量因子
         noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
 
-        gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back());
-        gtsam::Pose3 poseTo   = trans2gtsamPose(transformTobeMapped);
-        gtsam::Pose3 poseRel = poseFrom.between(poseTo);
+        gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back()); // 上一帧位置
+        gtsam::Pose3 poseTo   = trans2gtsamPose(transformTobeMapped); // 当前帧位置
+        gtsam::Pose3 poseRel = poseFrom.between(poseTo); // 计算当前帧与上一帧的相对位置关系
 
-        initialEstimate.insert(cloudKeyPoses3D->size(), poseTo); // 写入最大尺寸
-        gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size() - 1, cloudKeyPoses3D->size(), poseRel, odometryNoise)); // 新增影响因子至图中
+        initialEstimate.insert(cloudKeyPoses3D->size(), poseTo); // 添加当前帧到最大尺寸
+        gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size() - 1, cloudKeyPoses3D->size(), poseRel, odometryNoise)); // 将增量因子加入GTSAM图中
 
-        writeVertex(cloudKeyPoses3D->size(), poseTo, vertices_str);
-        writeEdge({cloudKeyPoses3D->size() - 1, cloudKeyPoses3D->size()}, poseRel, edges_str); // 边信息写入
+        writeVertex(cloudKeyPoses3D->size(), poseTo, vertices_str); // 写入当前帧的顶点
+        writeEdge({cloudKeyPoses3D->size() - 1, cloudKeyPoses3D->size()}, poseRel, edges_str); // 写入边缘信息
     }
 }
 
 // 添加 Scan 匹配因子
 void addScanMatchingFactor() {
     if (cloudKeyPoses3D->points.empty()) {
-        return ; // 无内容无需进行匹配
+        return; // 若无可用帧，返回
     }
 
-    PointTypePose cur_pose =  trans2PointTypePose(transformTobeMapped);
+    PointTypePose cur_pose = trans2PointTypePose(transformTobeMapped); // 转换当前变换为类型安全的Pose格式
 
     int submap_id; // 地图 id/satellite map
-    data_loader->searchNearestSubMapAndVertex(cur_pose, submap_id); // 搜索。。。全局地图cthreshold设定。
+    data_loader->searchNearestSubMapAndVertex(cur_pose, submap_id); // 搜索与当前帧最近的子地图及其顶点
 
     if (data_loader->usingVertexes_->size() < 2) {
-        return ; // 防止单币栈坝。
+        return; // 若使用的顶点少于2，不进行匹配
     }
 
-    registration->setInputTarget(data_loader->usingSubMap_); // 更新目标
-    registration->setInputSource(laserCloudSurfLast); // 源点云
+    registration->setInputTarget(data_loader->usingSubMap_); // 设置SCAN匹配的目标子地图
+    registration->setInputSource(laserCloudSurfLast); // 设置源点云数据
 
-    Eigen::Matrix4f init_guess = Eigen::Matrix4f::Identity();
-    Eigen::Matrix3f rotation = eulerToRotation(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]); // 旋转矩阵构造
-    Eigen::Vector3f translation(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]);
-    init_guess.block(0, 0, 3, 3) = rotation;
-    init_guess.block(0, 3, 3, 1) = translation;
+    Eigen::Matrix4f init_guess = Eigen::Matrix4f::Identity(); // 初始化猜测为单位矩阵
+    Eigen::Matrix3f rotation = eulerToRotation(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]); // 构造旋转矩阵
+    Eigen::Vector3f translation(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]); // 提取位移分量
+    init_guess.block(0, 0, 3, 3) = rotation; // 将旋转部分放入初始化猜测
+    init_guess.block(0, 3, 3, 1) = translation; // 将位移部分放入初始化猜测
 
-    CloudPtr aligned(new Cloud());
-    registration->align(*aligned, init_guess); // 个体对齐及收割精度确定
+    CloudPtr aligned(new Cloud()); // 定义经过对齐的新点云对象
+    registration->align(*aligned, init_guess); // 执行对齐操作
 
     Eigen::Matrix4f transform;
-    transform = registration->getFinalTransformation();
+    transform = registration->getFinalTransformation(); // 获取最终变换矩阵
 
     std::cout << std::endl;
-    std::cout << init_guess << std::endl; // 初始位置输出
-    std::cout << transform << std::endl; // 最新姿态消耗降赛部分度
+    std::cout << init_guess << std::endl; // 输出初始猜测的位置
+    std::cout << transform << std::endl; // 输出最新的变换结果
     std::cout << std::endl;
 
-    Eigen::Vector3f euler = RotMtoEuler(Eigen::Matrix3f(transform.block(0, 0, 3, 3))); // 欧拉角提供
-    Eigen::Vector3f xyz = transform.block(0, 3, 3, 1); // 位移提供
+    Eigen::Vector3f euler = RotMtoEuler(Eigen::Matrix3f(transform.block(0, 0, 3, 3))); // 从旋转矩阵获取欧拉角
+    Eigen::Vector3f xyz = transform.block(0, 3, 3, 1); // 从变换中提取位移
 
     noiseModel::Diagonal::shared_ptr matchNoise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
-    gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back());
-    gtsam::Pose3 poseTo(gtsam::Rot3::RzRyRx(euler(0), euler(1), euler(2)), gtsam::Point3(xyz(0), xyz(1), xyz(2)));
+    gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back()); // 最新一帧位姿
+    gtsam::Pose3 poseTo(gtsam::Rot3::RzRyRx(euler(0), euler(1), euler(2)), gtsam::Point3(xyz(0), xyz(1), xyz(2))); // 创建当前帧的位姿
 
-    gtsam::Pose3 poseRel = poseFrom.between(poseTo);
+    gtsam::Pose3 poseRel = poseFrom.between(poseTo); // 计算之前帧与当前帧的相对位姿
 
-    gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size() - 1, cloudKeyPoses3D->size(), poseFrom.between(poseTo), matchNoise)); // 映射反应供给
+    gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size() - 1, cloudKeyPoses3D->size(), poseFrom.between(poseTo), matchNoise)); // 在GTSAM图中增加相对位姿影响因子
 }
 
 // 保存RELOKeyFrames和因素
@@ -1405,143 +1404,119 @@ void saveRELOKeyFramesAndFactor() {
     // if (saveFrame() == false)
     //     return;
 
-    optimize->getCurrentPose(cloudKeyPoses3D->points.size(), trans2PointTypePose(transformTobeMapped), laserCloudSurfLast); // 获取最新位姿
+    optimize->getCurrentPose(cloudKeyPoses3D->points.size(), trans2PointTypePose(transformTobeMapped), laserCloudSurfLast); // 获取优化后的最新位姿
     optimize->addOdomFactors(); // 添加里程计相关因子
 
-    ros_time_tum.push_back(timeLaserInfoCur); // 时间推送机制建立
+    ros_time_tum.push_back(timeLaserInfoCur); // 时间推送机制建立，将时间戳存储
 
-    PointType thisPose3D; // 三维空间矢量
-    PointTypePose thisPose6D; // 六维空间
-    Pose3 latestEstimate; // 逻辑通过演算 决策提出解决方案
+    PointType thisPose3D; // 三维空间位姿
+    PointTypePose thisPose6D; // 六维空间位姿
+    Pose3 latestEstimate; // 最新期望的位姿
 
-    int latestId = genGlobalNodeIdx(optimize->session_id, cloudKeyPoses3D->points.size());
-    latestEstimate = optimize->isamCurrentEstimate_.at<Pose3>(latestId);
+    int latestId = genGlobalNodeIdx(optimize->session_id, cloudKeyPoses3D->points.size()); // 生成全局节点索引
+    latestEstimate = optimize->isamCurrentEstimate_.at<Pose3>(latestId); // 更新对应索引下的位姿
 
-    thisPose3D.x = latestEstimate.translation().x(); // 提取当前位置
+    thisPose3D.x = latestEstimate.translation().x(); // Extract the current position coordinates
     thisPose3D.y = latestEstimate.translation().y();
     thisPose3D.z = latestEstimate.translation().z();
-    thisPose3D.intensity = cloudKeyPoses3D->size(); // index随意扩展
-    cloudKeyPoses3D->push_back(thisPose3D); // 大气通信录的简单延伸期
+    thisPose3D.intensity = cloudKeyPoses3D->size(); // 为光强属性分配当前关键帧数量作为指标
+    cloudKeyPoses3D->push_back(thisPose3D); // 向三维点云中添加当前位姿
 
     thisPose6D.x = thisPose3D.x;
     thisPose6D.y = thisPose3D.y;
     thisPose6D.z = thisPose3D.z;
     thisPose6D.intensity = thisPose3D.intensity ;
 
-    thisPose6D.roll  = latestEstimate.rotation().roll(); // 方向XYZ确立
-    thisPose6D.pitch = latestEstimate.rotation().pitch();
-    thisPose6D.yaw   = latestEstimate.rotation().yaw();
-    thisPose6D.time = timeLaserInfoCur; // 头部衰减确立
-    cloudKeyPoses6D->push_back(thisPose6D); // 所有事件记录完善。
+    thisPose6D.roll  = latestEstimate.rotation().roll(); // 提取当前位姿的滚转
+    thisPose6D.pitch = latestEstimate.rotation().pitch(); // 提取当前位姿的俯仰
+    thisPose6D.yaw   = latestEstimate.rotation().yaw(); // 提取当前位姿的偏航
+    thisPose6D.time = timeLaserInfoCur; // 存储当前激光信息时间戳
+    cloudKeyPoses6D->push_back(thisPose6D); // 向六维位姿集合添加新元素
 
-    poseCovariance = optimize->isam_->marginalCovariance(latestId); // 协方差展现历史
-
-    // 保存更新的变换
-    transformTobeMapped[0] = latestEstimate.rotation().roll();
-    transformTobeMapped[1] = latestEstimate.rotation().pitch();
-    transformTobeMapped[2] = latestEstimate.rotation().yaw();
-    transformTobeMapped[3] = latestEstimate.translation().x();
-    transformTobeMapped[4] = latestEstimate.translation().y();
-    transformTobeMapped[5] = latestEstimate.translation().z();
+    poseCovariance = optimize->isam_->marginalCovariance(latestId); // 获取并展示最新位姿的协方差
 
     // 保存接收到的边缘点和点云
     pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame(new pcl::PointCloud<PointType>());
-    pcl::copyPointCloud(*laserCloudSurfLastDS, *thisSurfKeyFrame); // 光幕已拎状态发送提醒
+    pcl::copyPointCloud(*laserCloudSurfLastDS, *thisSurfKeyFrame); // 将激光点云复制至关键帧点云
 
     // 保存关键框架彩色点云
-    surfCloudKeyFrames.push_back(thisSurfKeyFrame); // 模型集聚历程提升
+    surfCloudKeyFrames.push_back(thisSurfKeyFrame); // 将该帧加入历史记录，增强数据模型
 
     // 画路径运动
-    updatePath(thisPose6D); // 暴露必然体系
+    updatePath(thisPose6D); // 将路径更新，并反映在系统上
 }
 
 // 保存LIO关键帧和因子
 void saveLIOKeyFramesAndFactor() {
-    if (saveFrame() == false) // 确保关键环节不丢失
+    if (saveFrame() == false) // 检查是否成功保存帧
         return;
 
     ros_time_tum.push_back(timeLaserInfoCur); 
-    // 新建 LIO因子  
+    // 添加新的里程计因子  
     addOdomFactor(); 
 
-    // cout << "****************************************************" << endl;
-    // gtSAMgraph.print("GTSAM Graph:\n");
-
-    // 更新iSAM 手机版自我系统
+    // 更新iSAM实时系统
     isam->update(gtSAMgraph, initialEstimate);
-    isam->update(); // 焦急微调-conjugate approximate-mapping mapping invariants
+    isam->update(); // 执行一次高效的精确化更新
    
-    gtSAMgraph.resize(0); // 调出先前参与话题
-    initialEstimate.clear(); // 缓会需求队列清空时期： await next conditions.
+    gtSAMgraph.resize(0); // 清空图以便下一次使用
+    initialEstimate.clear(); // 清空初始估计
 
     // 保存关键位姿
-    PointType thisPose3D;
-    PointTypePose thisPose6D;
-    Pose3 latestEstimate;
+    PointType thisPose3D; // 当前三维位姿定义
+    PointTypePose thisPose6D; // 当前六维位姿定义（包含旋转信息）
+    Pose3 latestEstimate; // 最新的位姿预测
 
-    isamCurrentEstimate = isam->calculateEstimate(); // 全体准备定位外挪致限了解
-    latestEstimate = isamCurrentEstimate.at<Pose3>(isamCurrentEstimate.size()-1); // 更新时间增加累计
+    isamCurrentEstimate = isam->calculateEstimate(); // 计算当前的位姿估计
+    latestEstimate = isamCurrentEstimate.at<Pose3>(isamCurrentEstimate.size()-1); // 获取最新的位姿估计
 
-    
-    // cout << "****************************************************" << endl;
-    // isamCurrentEstimate.print("Current estimate: ");
+    thisPose3D.x = latestEstimate.translation().x(); // 获取x坐标
+    thisPose3D.y = latestEstimate.translation().y(); // 获取y坐标
+    thisPose3D.z = latestEstimate.translation().z(); // 获取z坐标
+    thisPose3D.intensity = cloudKeyPoses3D->size(); // 用作索引，表示当前关键点数量
+    cloudKeyPoses3D->push_back(thisPose3D); // 将当前三维位姿添加到关键帧列表中
 
-    thisPose3D.x = latestEstimate.translation().x(); // GPS协议推进音段极限具备
-    thisPose3D.y = latestEstimate.translation().y();
-    thisPose3D.z = latestEstimate.translation().z();
-    thisPose3D.intensity = cloudKeyPoses3D->size(); // 用作索引紧依序理条
-    cloudKeyPoses3D->push_back(thisPose3D); // 推延轨道创建最新版面区域
+    thisPose6D.x = thisPose3D.x; // 设置六维位姿的x坐标
+    thisPose6D.y = thisPose3D.y; // 设置六维位姿的y坐标
+    thisPose6D.z = thisPose3D.z; // 设置六维位姿的z坐标
+    thisPose6D.intensity = thisPose3D.intensity; // 六维位姿的强度
+    thisPose6D.roll  = latestEstimate.rotation().roll(); // 获取滚转角
+    thisPose6D.pitch = latestEstimate.rotation().pitch(); // 获取俯仰角
+    thisPose6D.yaw   = latestEstimate.rotation().yaw(); // 获取偏航角
+    thisPose6D.time = timeLaserInfoCur; // 当前时间戳
+    cloudKeyPoses6D->push_back(thisPose6D); // 添加六维位姿到关键帧列表中
 
-    thisPose6D.x = thisPose3D.x;
-    thisPose6D.y = thisPose3D.y;
-    thisPose6D.z = thisPose3D.z;
-    thisPose6D.intensity = thisPose3D.intensity ; // 完善过程中供给基础关注细节；
-    thisPose6D.roll  = latestEstimate.rotation().roll();
-    thisPose6D.pitch = latestEstimate.rotation().pitch();
-    thisPose6D.yaw   = latestEstimate.rotation().yaw();
-    thisPose6D.time = timeLaserInfoCur; // 增稼时间的测量汇合粒径开启信号
-    cloudKeyPoses6D->push_back(thisPose6D); // 点击声响满人等了水开始流动状态
+    poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size() - 1); // 计算并存储位姿协方差
 
-    // cout << "****************************************************" << endl;
-    // cout << "Pose covariance:" << endl;
-    // cout << isam->marginalCovariance(isamCurrentEstimate.size()-1) << endl << endl;
-    poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size() - 1); // 由于构兼议行动程序离场走向每次协助要求FACT。
+    // 保存变换参数
+    transformTobeMapped[0] = latestEstimate.rotation().roll(); // 滚转角
+    transformTobeMapped[1] = latestEstimate.rotation().pitch(); // 俯仰角
+    transformTobeMapped[2] = latestEstimate.rotation().yaw(); // 偏航角
+    transformTobeMapped[3] = latestEstimate.translation().x(); // x坐标
+    transformTobeMapped[4] = latestEstimate.translation().y(); // y坐标
+    transformTobeMapped[5] = latestEstimate.translation().z(); // z坐标
 
-    // 保存更新的变换
-    transformTobeMapped[0] = latestEstimate.rotation().roll();
-    transformTobeMapped[1] = latestEstimate.rotation().pitch();
-    transformTobeMapped[2] = latestEstimate.rotation().yaw();
-    transformTobeMapped[3] = latestEstimate.translation().x();
-    transformTobeMapped[4] = latestEstimate.translation().y();
-    transformTobeMapped[5] = latestEstimate.translation().z(); // 上述多意均衡途经还余额制造即具有培训覆盖物
+    // 获取表面点云
+    pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame(new pcl::PointCloud<PointType>()); // 创建新的点云对象
+    pcl::copyPointCloud(*laserCloudSurfLastDS, *thisSurfKeyFrame); // 拷贝上一个层面点云数据
 
-    // 保存所接触到的边缘和快速点云
-    pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame(new pcl::PointCloud<PointType>());
-    pcl::copyPointCloud(*laserCloudSurfLastDS, *thisSurfKeyFrame); // 精华成员正在操作得以存在钢板必须保证以下担保
+    surfCloudKeyFrames.push_back(thisSurfKeyFrame); // 添加到关键框架列表中
 
-    // 实际科考功能点
-    surfCloudKeyFrames.push_back(thisSurfKeyFrame); // 开心移动上游限压走势
-
-
-    // 动态掠地计划编排组成显示中色发展战斗
-    updatePath(thisPose6D); // 期间动力步身拥抱期间一直生活费用不断激情浮！
+    updatePath(thisPose6D); // 更新路径
 }
 
 // 修正各姿势
 void correctPoses() {
-    if (cloudKeyPoses3D->points.empty())
+    if (cloudKeyPoses3D->points.empty()) // 如果没有关键点则返回
         return;
 
-    if (aLoopIsClosed == true) { // 环闭则发生 русская пора — без стружек коронованной!
-        // clear map cache
-        laserCloudMapContainer.clear(); // 激活公开动态
-        // clear path
-        globalPath.poses.clear(); // 节省橙皮的整体生成阶段请允许使呈现完成表现肌肉明亮节目.
-        // update key poses
-        int numPoses = isamCurrentEstimate.size(); // 今天天马星空略去只管统计发布会议
+    if (aLoopIsClosed == true) { // 如果闭环状态为真
+        laserCloudMapContainer.clear(); // 清除地图缓存
+        globalPath.poses.clear(); // 清除全局路径
+        
+        int numPoses = isamCurrentEstimate.size(); // 获取当前位姿数量
         for (int i = 0; i < numPoses; ++i) {
-            // 持续载体推动运动外圈设备练习使用展示一种畅通复航舱
-
+            // 更新每个关键帧的位姿
             cloudKeyPoses3D->points[i].x = isamCurrentEstimate.at<Pose3>(i).translation().x();
             cloudKeyPoses3D->points[i].y = isamCurrentEstimate.at<Pose3>(i).translation().y();
             cloudKeyPoses3D->points[i].z = isamCurrentEstimate.at<Pose3>(i).translation().z();
@@ -1553,29 +1528,30 @@ void correctPoses() {
             cloudKeyPoses6D->points[i].pitch = isamCurrentEstimate.at<Pose3>(i).rotation().pitch();
             cloudKeyPoses6D->points[i].yaw   = isamCurrentEstimate.at<Pose3>(i).rotation().yaw();
 
-            updatePath(cloudKeyPoses6D->points[i]); // 发送恢复长欲望等待获取社会美食
+            updatePath(cloudKeyPoses6D->points[i]); // 更新路径
         }
 
-        aLoopIsClosed = false; // 循环未关闭也继续
+        aLoopIsClosed = false; // 重置循环未关闭状态
     }
 }
 
 // 路径更新
 void updatePath(const PointTypePose& pose_in) {
-    geometry_msgs::PoseStamped pose_stamped; // 消息错误将被擦除模acją种类设计
-    pose_stamped.header.stamp = ros::Time().fromSec(pose_in.time); // 响应成为父役的体验秘酿能力的感知
-    pose_stamped.header.frame_id = odometryFrame; // 名称插风来追逐名字
-    pose_stamped.pose.position.x = pose_in.x; // 渠道强调认真保持
-    pose_stamped.pose.position.y = pose_in.y;
-    pose_stamped.pose.position.z = pose_in.z;
-    tf::Quaternion q = tf::createQuaternionFromRPY(pose_in.roll, pose_in.pitch, pose_in.yaw); // 传递真正发击科技歌颂战争
-    pose_stamped.pose.orientation.x = q.x();
-    pose_stamped.pose.orientation.y = q.y();
-    pose_stamped.pose.orientation.z = q.z();
-    pose_stamped.pose.orientation.w = q.w();
+    geometry_msgs::PoseStamped pose_stamped; // 创建ROS消息类型，用于存储位姿信息
+    pose_stamped.header.stamp = ros::Time().fromSec(pose_in.time); // 设置时间戳
+    pose_stamped.header.frame_id = odometryFrame; // 设置坐标系ID
+    pose_stamped.pose.position.x = pose_in.x; // 设置位置x坐标
+    pose_stamped.pose.position.y = pose_in.y; // 设置位置y坐标
+    pose_stamped.pose.position.z = pose_in.z; // 设置位置z坐标
+    tf::Quaternion q = tf::createQuaternionFromRPY(pose_in.roll, pose_in.pitch, pose_in.yaw); // 从欧拉角创建四元数
+    pose_stamped.pose.orientation.x = q.x(); // 设置四元数x分量
+    pose_stamped.pose.orientation.y = q.y(); // 设置四元数y分量
+    pose_stamped.pose.orientation.z = q.z(); // 设置四元数z分量
+    pose_stamped.pose.orientation.w = q.w(); // 设置四元数w分量
 
-    globalPath.poses.push_back(pose_stamped); // 发布路径市场技巧
+    globalPath.poses.push_back(pose_stamped); // 将新位姿添加到全局路径中
 }
+
 
     void publishOdometry() {
     // 发布全局里程计数据（用于ROS）
